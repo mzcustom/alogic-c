@@ -557,116 +557,117 @@ void scatterResqued(Animal **board, Animal **resqued, int maxIndexToScatter,
 	resqued[maxIndexToScatter+1] = 0;
 }
 
-//bool updateAnimState(animals *[BOARD_SIZE]Animal, board, resqued *[BOARD_SIZE]*Animal,
-//	frontRowPos *[NUM_COL]Vec2, numAnimalLeft *int,
-//	resquedChanged, bigJumpMade *bool, bigJumpLeft *int, lastMsgShown bool) {
-//	isAllUpdated := true
-//
-//	for i := range animals {
-//		anim := &animals[i]
-//		// Update Press and Height
-//		if anim.press > 0 {
-//			anim.height -= anim.press
-//			if anim.height < MIN_ANIM_HEIGHT {
-//				anim.height = MIN_ANIM_HEIGHT
-//			}
-//			anim.press /= 2
-//			if anim.press < 0.0001 {
-//				anim.press = -1
-//			}
-//		}
-//		if anim.press < 0 {
-//			if anim.height-anim.press >= ANIM_SIZE {
-//				anim.height = ANIM_SIZE
-//				anim.press = 0
-//			} else {
-//				anim.height -= anim.press
-//				anim.press *= 2
-//			}
-//		}
-//
-//		// Update Pos and Veloc if it's moving or has accel
-//		if !(anim.veloc == Vec2{}) || !(anim.accel == Vec2{}) {
-//			isAllUpdated = false
-//			pos := anim.pos
-//			veloc := anim.veloc
-//			anim.pos = Vec2Add(pos, veloc)
-//			anim.veloc = Vec2Add(anim.veloc, anim.accel)
-//			if anim.totalJumpFrames > 0 {
-//				anim.currJumpFrame++
-//			}
-//
-//			// Take care of landing
-//			if Vec2DistSq(anim.pos, anim.dest) < Vec2LenSq(anim.veloc)/2 {
-//				if gameMode == GAME_PLAY &&
-//					anim.ascFrames > anim.totalJumpFrames/2 && anim.dest.Y == FRONT_ROW_Y {
-//					rl.PlaySound(sounds.Yay)
-//				}
-//				if anim.veloc.Y <= FPS {
-//					if anim.veloc.Y > FPS/2 {
-//						anim.press = anim.veloc.Y / 3
-//						if gameMode == GAME_PLAY {
-//							rl.PlaySound(sounds.Land)
-//						}
-//					}
-//				} else {
-//					anim.press = anim.veloc.Y / 3
-//					anim.dustDuration = MAX_DUST_DURATION
-//					if anim.dest.X == RESQUE_SPOT_X && anim.dest.Y == RESQUE_SPOT_Y {
-//						rl.PlaySound(sounds.BigLand)
-//					} else {
-//						rl.PlaySound(sounds.Land)
-//					}
-//				}
-//				// if the landing animal is the last resqued(the one crossing the bridge)
-//				lastResquedIndex := BOARD_SIZE - 1 - *numAnimalLeft
-//				if gameMode == GAME_PLAY && lastResquedIndex > 0 &&
-//					anim == resqued[lastResquedIndex] {
-//					// when a big jump is made, send previously resqued animals back to the land
-//					if anim.veloc.Y > FPS && *bigJumpLeft > 0 {
-//						*bigJumpMade = true
-//						scatterResqued(board, resqued, lastResquedIndex-1, frontRowPos,
-//							numAnimalLeft, resquedChanged)
-//						*bigJumpLeft -= 1
+bool updateAnimState(Animal *animals, Animal **board, Animal **resqued, Vec2 *frontRowPos, 
+                     int *numAnimalLeft, bool *resquedChanged, bool *bigJumpMade, int *bigJumpLeft, 
+                     bool lastMsgShown) {
+	bool isAllUpdated = true;
+
+	for (int i = 0; i < BOARD_SIZE; ++i) {
+		Animal *anim = &animals[i];
+		// Update Press and Height
+		if (anim->press > 0) {
+			anim->height -= anim->press;
+			if (anim->height < MIN_ANIM_HEIGHT) {
+				anim->height = MIN_ANIM_HEIGHT;
+			}
+			anim->press *= 0.5f;
+			if (anim->press < 0.0001f) {
+				anim->press = -1;
+			}
+		}
+		if (anim->press < 0) {
+			if (anim->height-anim->press >= ANIM_SIZE) {
+				anim->height = ANIM_SIZE;
+				anim->press = 0;
+			} else {
+				anim->height -= anim->press;
+				anim->press *= 2;
+			}
+		}
+
+		// Update Pos and Veloc if it's moving or has accel
+		if ((!IsVec2Zero(anim->veloc)) || (!IsVec2Zero(anim->accel))) {
+			isAllUpdated = false;
+			Vec2 pos = anim->pos;
+			Vec2 veloc = anim->veloc;
+			anim->pos = Vec2Add(pos, veloc);
+			anim->veloc = Vec2Add(anim->veloc, anim->accel);
+			if (anim->totalJumpFrames > 0) {
+				anim->currJumpFrame++;
+			}
+
+			// Take care of landing
+			if (Vec2DistSq(anim->pos, anim->dest) < Vec2LenSq(anim->veloc)/2) {
+				if ((gameMode == GAME_PLAY_MODE) &&
+					(anim->ascFrames > anim->totalJumpFrames/2) && (anim->dest.y == FRONT_ROW_Y)) {
+					PlaySound(sounds[YAY_SOUND]);
+				}
+				if (anim->veloc.y <= FPS) {
+					if (anim->veloc.y > FPS/2) {
+						anim->press = anim->veloc.y / 3;
+						if (gameMode == GAME_PLAY_MODE) {
+							PlaySound(sounds[LAND_SOUND]);
+						}
+					}
+				} else {
+					anim->press = anim->veloc.y / 3;
+					anim->dustDuration = MAX_DUST_DURATION;
+					if ((anim->dest.x == RESQUE_SPOT_X) && (anim->dest.y == RESQUE_SPOT_Y)) {
+						PlaySound(sounds[BIG_LAND_SOUND]);
+					} else {
+						PlaySound(sounds[LAND_SOUND]);
+					}
+				}
+				// if the landing animal is the last resqued(the one crossing the bridge)
+				int lastResquedIndex = BOARD_SIZE - 1 - *numAnimalLeft;
+				if ((gameMode == GAME_PLAY_MODE) && (lastResquedIndex > 0) && 
+                    (anim == resqued[lastResquedIndex])) {
+					// when a big jump is made, send previously resqued animals back to the land
+					if ((anim->veloc.y > FPS) && (*bigJumpLeft > 0)) {
+						*bigJumpMade = true;
+						scatterResqued(board, resqued, lastResquedIndex-1, frontRowPos,
+							           numAnimalLeft, resquedChanged);
+						*bigJumpLeft -= 1;
 //						if lastMsgShown && *bigJumpLeft == 1 {
-//							setMsg(GAME_PLAY, 3)
-//						}
-//						if *bigJumpLeft == 0 {
-//							setMsg(GAME_PLAY, 4)
-//						}
-//					} else {
-//						// For regular jumps, compress and move the previously resqued sideway
-//						prevAnimIndex := lastResquedIndex - 1
-//						prevAnim := resqued[prevAnimIndex]
-//						prevAnim.press = ANIM_SIZE
-//						pushFactor := f32(prevAnimIndex/2 + 1)
-//						if prevAnimIndex%2 == 0 {
-//							prevAnim.dest = Vec2Sub(prevAnim.pos,
-//								Vec2{pushFactor * ANIM_SIZE * 0.25, 0})
-//							prevAnim.accel = Vec2{pushFactor * ANIM_SIZE * 0.075, 0}
-//							prevAnim.veloc = Vec2{pushFactor * -ANIM_SIZE * 0.15, 0}
-//						} else {
-//							prevAnim.dest = Vec2Add(prevAnim.pos,
-//								Vec2{pushFactor * ANIM_SIZE * 0.25, 0})
-//							prevAnim.accel = Vec2{pushFactor * -ANIM_SIZE * 0.075, 0}
-//							prevAnim.veloc = Vec2{pushFactor * ANIM_SIZE * 0.15, 0}
-//						}
-//					}
-//				}
-//
-//				anim.pos = anim.dest
-//				anim.veloc, anim.accel = Vec2{}, Vec2{}
-//				anim.scale = 1
-//				anim.scaleDecRate = 0
-//				anim.totalJumpFrames = 0
-//				anim.ascFrames = 0
-//				anim.currJumpFrame = 0
-//			}
-//		}
-//	}
-//
-//	return isAllUpdated
-//}
+//							setMsg(GAME_PLAY, 3);
+						//}
+						//if *bigJumpLeft == 0 {
+						//	setMsg(GAME_PLAY, 4);
+						//}
+					} else {
+						// For regular jumps, compress and move the previously resqued sideway
+						int prevAnimIndex = lastResquedIndex - 1;
+						Animal *prevAnim = resqued[prevAnimIndex];
+						prevAnim->press = ANIM_SIZE;
+						f32 pushFactor = (f32)(prevAnimIndex*0.5f + 1);
+						if (prevAnimIndex%2 == 0) {
+							prevAnim->dest = Vec2Sub(prevAnim->pos,
+								                    (Vec2){pushFactor * ANIM_SIZE * 0.25f, 0});
+							prevAnim->accel = (Vec2){pushFactor * ANIM_SIZE * 0.075f, 0};
+							prevAnim->veloc = (Vec2){pushFactor * -ANIM_SIZE * 0.15f, 0};
+						} else {
+							prevAnim->dest = Vec2Add(prevAnim->pos,
+								                    (Vec2){pushFactor * ANIM_SIZE * 0.25, 0});
+							prevAnim->accel = (Vec2){pushFactor * -ANIM_SIZE * 0.075f, 0};
+							prevAnim->veloc = (Vec2){pushFactor * ANIM_SIZE * 0.15f, 0};
+						}
+					}
+				}
+
+				anim->pos = anim->dest;
+				anim->veloc = (Vec2){}; 
+                anim->accel = (Vec2){};
+				anim->scale = 1;
+				anim->scaleDecRate = 0;
+				anim->totalJumpFrames = 0;
+				anim->ascFrames = 0;
+				anim->currJumpFrame = 0;
+			}
+		}
+	}
+
+	return isAllUpdated;
+}
 
 void resetState(Animal *animals, Animal **board, Animal **resqued, Vec2 *frontRowPos) {
 	//memset(animals, 0, sizeof(Animal)*BOARD_SIZE);
@@ -681,7 +682,7 @@ void resetState(Animal *animals, Animal **board, Animal **resqued, Vec2 *frontRo
 }
 
 void processKeyDown(Animal *anim) {
-	anim->press = anim->height*0.05;
+	anim->press = anim->height*0.05f;
 	if (anim->height < MIN_JUMP_HEIGHT) {
 		anim->height = MIN_JUMP_HEIGHT;
 	}
@@ -693,7 +694,7 @@ void setTitleAnims(Animal **titleAnims, TitleState *tstate) {
 	}
 
 	titleAnims[0]->dest = (Vec2){WINDOW_WIDTH / 4 * 3, TITLE_LANDING_Y + TITLE_HEIGHT - ANIM_SIZE/3};
-	titleAnims[1]->dest = (Vec2){WINDOW_WIDTH / 4 * 1.5, TITLE_LANDING_Y + TITLE_HEIGHT - ANIM_SIZE/3};
+	titleAnims[1]->dest = (Vec2){WINDOW_WIDTH / 4 * 1.5f, TITLE_LANDING_Y + TITLE_HEIGHT - ANIM_SIZE/3};
 	titleAnims[2]->dest = (Vec2){WINDOW_WIDTH / 2, TITLE_LANDING_Y - TITLE_HEIGHT/4 + ANIM_SIZE/2};
 }
 
