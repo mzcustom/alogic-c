@@ -670,15 +670,14 @@ bool updateAnimState(Animal *animals, Animal **board, Animal **resqued, Vec2 *fr
 }
 
 void resetState(Animal *animals, Animal **board, Animal **resqued, Vec2 *frontRowPos) {
-	//memset(animals, 0, sizeof(Animal)*BOARD_SIZE);
-	//setAnimals(animals);
+	memset(animals, 0, sizeof(Animal)*BOARD_SIZE);
+	setAnimals(animals);
+	memset(resqued, 0, sizeof(animals)*BOARD_SIZE);
 
 	for (int i = 0; i < BOARD_SIZE; i++) {
 		board[i] = &animals[i];
 	}
-
 	shuffleBoard(board, frontRowPos);
-	memset(resqued, 0, sizeof(animals)*BOARD_SIZE);
 }
 
 void processKeyDown(Animal *anim) {
@@ -699,12 +698,42 @@ void setTitleAnims(Animal **titleAnims, TitleState *tstate) {
 }
 
 int main() {
+    TitleLogo title = (TitleLogo){};
+	setTitleLogo(&title);
+
+	Animal animals[BOARD_SIZE] = {};
+	Animal *board[BOARD_SIZE] = {}; 
+	Animal *resqued[BOARD_SIZE] = {}; 
+	Vec2 frontRowPos[NUM_COL] = {}; 
+	resetState(animals, board, resqued, frontRowPos);
+
+	TitleState tstate = {};
+	int firstRow = BOARD_SIZE - NUM_COL;
+	Animal *titleAnims[3] = {board[firstRow], board[firstRow+2], board[firstRow+1]};
+	setTitleAnims(titleAnims, &tstate);
+
+	int numAnimalLeft = BOARD_SIZE;
+	int resquableIndex[NUM_COL] = {};
+	bool isTitleUpdated = true;
+	bool isAllAnimUpdated = true;
+	bool isQuitting = false;
+	gameMode = TITLE_MODE;
+	int openingFrame = 0;
+	int gameClearFrame = 0;
+	int bigJumpLeft = TOTAL_BIG_JUMP;
+	bool willReplay = false;
+	bool firstMoveMade = false;
+    bool bigJumpMade = false;
+    bool lastMsgShown = false;
+    
+	bool resquedChanged = true;
+	bool mostRecentResqueType = (u8)(0xFF); // initially, all front row animals can be resqued.
+	int numPossibleMoves = findResquables(board, mostRecentResqueType, resquableIndex);
+
     InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Animal Logic");
     SetTargetFPS(FPS);
     InitAudioDevice();
     loadAssets();
-
-    bool isQuitting = false;
 
     while (!isQuitting && !WindowShouldClose()) {
         BeginDrawing();
