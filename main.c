@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <string.h>
 #include <assert.h>
 #include "raylib.h" 
 
@@ -265,17 +266,17 @@ void drawTitle(TitleLogo *title) {
 	DrawTexturePro(textures[TITLE_TEXTURE], srcRect, desRect, (Vec2){}, 0, RAYWHITE);
 }
 
-void setAnimals(Animal **board) {
+void setAnimals(Animal *animal) {
 	u8 color = 1; 
     u8 kind = 1;
 
 	for (int row = 0; row < NUM_ROW; row++) {
 		u8 colorBit = color << NUM_KIND;
 		for (int col = 0; col < NUM_COL; col++) {
-			int boardIndex = row*NUM_COL + col;
-			board[boardIndex]->height = ANIM_SIZE;
-			board[boardIndex]->animType = colorBit | kind;
-			board[boardIndex]->scale = 1;
+			int animalIndex = row*NUM_COL + col;
+			animal[animalIndex].height = ANIM_SIZE;
+			animal[animalIndex].animType = colorBit | kind;
+			animal[animalIndex].scale = 1;
 			kind <<= 1;
 		}
 		kind = 1;
@@ -398,6 +399,68 @@ void resqueAt(Animal **board, Animal **resqued, int resqueIndex, int numAnimalLe
 	}
 }
 
+void drawAnimal(Animal *anim) {
+	u8 colorBitfield = anim->animType >> NUM_KIND;
+	u8 kindBitfield = anim->animType & 0b1111;
+	u8 colorOffset = NUM_COLOR - 1 - findFirst1Bit(colorBitfield);
+	u8 kindOffset = NUM_KIND - 1 - findFirst1Bit(kindBitfield);
+	Rectangle srcRect = (Rectangle){(f32)(kindOffset) * ANIM_SIZE, (f32)(colorOffset) * ANIM_SIZE,
+		                          ANIM_SIZE, ANIM_SIZE};
+
+	if (anim->totalJumpFrames > 0) {
+		if (anim->currJumpFrame <= anim->ascFrames) {
+			anim->scale += JUMP_SCALE_INC_RATE;
+			if (anim->currJumpFrame == anim->ascFrames) {
+				anim->scaleDecRate = (anim->scale - 1) / (f32)(anim->totalJumpFrames - anim->ascFrames);
+			}
+		} else {
+			anim->scale -= anim->scaleDecRate;
+			if (anim->scale < 1) {
+				anim->scale = 1;
+			}
+		}
+	}
+
+	f32 sc = anim->scale;
+	Vec2 animOrigin = Vec2Sub(anim->pos, (Vec2){sc*ANIM_SIZE*0.5f, sc*ANIM_SIZE*0.5f});
+	Vec2 desPos = (Vec2){animOrigin.x, animOrigin.y + sc*ANIM_SIZE - sc*anim->height};
+	Rectangle desRect = (Rectangle){desPos.x, desPos.y, sc*ANIM_SIZE, sc*anim->height};
+
+	DrawTexturePro(textures[ANIMALS_TEXTURE], srcRect, desRect, (Vec2){}, 0, RAYWHITE);
+
+	// Draw dust
+	if (anim->dustDuration != 0) {
+		Rectangle srcRect = (Rectangle){0, 0, DUST_IMAGE_WIDTH, DUST_IMAGE_HEIGHT};
+		Rectangle desRect = (Rectangle){anim->pos.x - ANIM_SIZE*0.7, anim->pos.y + ANIM_SIZE*0.4,
+			                ANIM_SIZE * 0.5, ANIM_SIZE * 0.15};
+		DrawTexturePro(textures[DUST_TEXTURE], srcRect, desRect, (Vec2){}, 0, RAYWHITE);
+
+		desRect = (Rectangle){anim->pos.x + ANIM_SIZE*0.2, anim->pos.y + ANIM_SIZE*0.4,
+			                ANIM_SIZE * 0.5, ANIM_SIZE * 0.15};
+		DrawTexturePro(textures[DUST_TEXTURE], srcRect, desRect, (Vec2){}, 0, RAYWHITE);
+		anim->dustDuration -= 1;
+	}
+}
+
+bool isAnimRectClicked(Animal *anim) {
+	if (!anim) return false;
+
+	f32 mouseX = (f32)(GetMouseX());
+	f32 mouseY = (f32)(GetMouseY());
+	f32 animPosX = anim->pos.x;
+	f32 animPosY = anim->pos.y;
+	f32 halfLength = ANIM_SIZE+0.5f;
+
+	//if DEBUG {
+	//	printf("Mouse Clicked at : %d, %d\n", mouseX, mouseY);
+	//	printf("AnimPos : %d, %d\n", animPosX, animPosY);
+	//}
+
+	return (mouseX >= animPosX-halfLength) && (mouseX <= animPosX+halfLength) &&
+		(mouseY >= animPosY-halfLength) && (mouseY <= animPosY+halfLength);
+}
+
+
 void loadAssets() {
 	Image titleImage = LoadImage("assets/textures/title.png");
 	Image groundImage = LoadImage("assets/textures/background.png");
@@ -434,6 +497,204 @@ void unloadSounds() {
 	for (int i = 0; i < SOUND_COUNT; i++) {
 		UnloadSound(sounds[i]);
 	}
+}
+
+int findLastRowEmpties(Animal **board, bool *empties) {
+	int emptyColCount = 0;
+	for (int i = 0; i < NUM_COL; i++) {
+		if (!board[i]) {
+			empties[i] = true;
+			emptyColCount++;
+		}
+	}
+	return emptyColCount;
+}
+
+void moveResquedToBoard(Animal **board, Animal **resqued, int boardIndex, int resquedIndex,
+	                    int *numAnimalLeft, bool *resquedChanged) {
+	Animal *animToPush = resqued[resquedIndex];
+	resqued[resquedIndex] = 0;
+
+	int currIndex = boardIndex;
+	while (currIndex >= 0) {
+		Animal *nextAnimToPush = board[currIndex];
+		board[currIndex] = animToPush;
+		if (nextAnimToPush) {
+			jumpAnimal(nextAnimToPush, (Vec2){nextAnimToPush->pos.x, nextAnimToPush->pos.y - ROW_HEIGHT},
+				       20, 12);
+			animToPush = nextAnimToPush;
+			currIndex -= NUM_COL;
+		} else {
+			break;
+		}
+	}
+
+	*numAnimalLeft += 1;
+	*resquedChanged = true;
+}
+
+void scatterResqued(Animal **board, Animal **resqued, int maxIndexToScatter,
+	                Vec2 *frontRowPos, int *numAnimalLeft, bool *resquedChanged) {
+	bool lastRowEmptyIndices[NUM_COL] = {};
+	int emptyCount = findLastRowEmpties(board, lastRowEmptyIndices);
+	int indexToMoveToBoard = maxIndexToScatter;
+
+	for (int i = 0; i < NUM_COL; i++) {
+		if (lastRowEmptyIndices[i]) {
+			jumpAnimal(resqued[indexToMoveToBoard], frontRowPos[i], 24, 16);
+			int frontRowIndexToJump = BOARD_SIZE - NUM_COL + i;
+			moveResquedToBoard(board, resqued, frontRowIndexToJump, indexToMoveToBoard,
+				               numAnimalLeft, resquedChanged);
+			indexToMoveToBoard--;
+			emptyCount--;
+			if ((indexToMoveToBoard < 0) || (emptyCount < 1)) {
+				break;
+			}
+		}
+	}
+
+	resqued[indexToMoveToBoard+1] = resqued[maxIndexToScatter+1];
+	resqued[maxIndexToScatter+1] = 0;
+}
+
+//bool updateAnimState(animals *[BOARD_SIZE]Animal, board, resqued *[BOARD_SIZE]*Animal,
+//	frontRowPos *[NUM_COL]Vec2, numAnimalLeft *int,
+//	resquedChanged, bigJumpMade *bool, bigJumpLeft *int, lastMsgShown bool) {
+//	isAllUpdated := true
+//
+//	for i := range animals {
+//		anim := &animals[i]
+//		// Update Press and Height
+//		if anim.press > 0 {
+//			anim.height -= anim.press
+//			if anim.height < MIN_ANIM_HEIGHT {
+//				anim.height = MIN_ANIM_HEIGHT
+//			}
+//			anim.press /= 2
+//			if anim.press < 0.0001 {
+//				anim.press = -1
+//			}
+//		}
+//		if anim.press < 0 {
+//			if anim.height-anim.press >= ANIM_SIZE {
+//				anim.height = ANIM_SIZE
+//				anim.press = 0
+//			} else {
+//				anim.height -= anim.press
+//				anim.press *= 2
+//			}
+//		}
+//
+//		// Update Pos and Veloc if it's moving or has accel
+//		if !(anim.veloc == Vec2{}) || !(anim.accel == Vec2{}) {
+//			isAllUpdated = false
+//			pos := anim.pos
+//			veloc := anim.veloc
+//			anim.pos = Vec2Add(pos, veloc)
+//			anim.veloc = Vec2Add(anim.veloc, anim.accel)
+//			if anim.totalJumpFrames > 0 {
+//				anim.currJumpFrame++
+//			}
+//
+//			// Take care of landing
+//			if Vec2DistSq(anim.pos, anim.dest) < Vec2LenSq(anim.veloc)/2 {
+//				if gameMode == GAME_PLAY &&
+//					anim.ascFrames > anim.totalJumpFrames/2 && anim.dest.Y == FRONT_ROW_Y {
+//					rl.PlaySound(sounds.Yay)
+//				}
+//				if anim.veloc.Y <= FPS {
+//					if anim.veloc.Y > FPS/2 {
+//						anim.press = anim.veloc.Y / 3
+//						if gameMode == GAME_PLAY {
+//							rl.PlaySound(sounds.Land)
+//						}
+//					}
+//				} else {
+//					anim.press = anim.veloc.Y / 3
+//					anim.dustDuration = MAX_DUST_DURATION
+//					if anim.dest.X == RESQUE_SPOT_X && anim.dest.Y == RESQUE_SPOT_Y {
+//						rl.PlaySound(sounds.BigLand)
+//					} else {
+//						rl.PlaySound(sounds.Land)
+//					}
+//				}
+//				// if the landing animal is the last resqued(the one crossing the bridge)
+//				lastResquedIndex := BOARD_SIZE - 1 - *numAnimalLeft
+//				if gameMode == GAME_PLAY && lastResquedIndex > 0 &&
+//					anim == resqued[lastResquedIndex] {
+//					// when a big jump is made, send previously resqued animals back to the land
+//					if anim.veloc.Y > FPS && *bigJumpLeft > 0 {
+//						*bigJumpMade = true
+//						scatterResqued(board, resqued, lastResquedIndex-1, frontRowPos,
+//							numAnimalLeft, resquedChanged)
+//						*bigJumpLeft -= 1
+//						if lastMsgShown && *bigJumpLeft == 1 {
+//							setMsg(GAME_PLAY, 3)
+//						}
+//						if *bigJumpLeft == 0 {
+//							setMsg(GAME_PLAY, 4)
+//						}
+//					} else {
+//						// For regular jumps, compress and move the previously resqued sideway
+//						prevAnimIndex := lastResquedIndex - 1
+//						prevAnim := resqued[prevAnimIndex]
+//						prevAnim.press = ANIM_SIZE
+//						pushFactor := f32(prevAnimIndex/2 + 1)
+//						if prevAnimIndex%2 == 0 {
+//							prevAnim.dest = Vec2Sub(prevAnim.pos,
+//								Vec2{pushFactor * ANIM_SIZE * 0.25, 0})
+//							prevAnim.accel = Vec2{pushFactor * ANIM_SIZE * 0.075, 0}
+//							prevAnim.veloc = Vec2{pushFactor * -ANIM_SIZE * 0.15, 0}
+//						} else {
+//							prevAnim.dest = Vec2Add(prevAnim.pos,
+//								Vec2{pushFactor * ANIM_SIZE * 0.25, 0})
+//							prevAnim.accel = Vec2{pushFactor * -ANIM_SIZE * 0.075, 0}
+//							prevAnim.veloc = Vec2{pushFactor * ANIM_SIZE * 0.15, 0}
+//						}
+//					}
+//				}
+//
+//				anim.pos = anim.dest
+//				anim.veloc, anim.accel = Vec2{}, Vec2{}
+//				anim.scale = 1
+//				anim.scaleDecRate = 0
+//				anim.totalJumpFrames = 0
+//				anim.ascFrames = 0
+//				anim.currJumpFrame = 0
+//			}
+//		}
+//	}
+//
+//	return isAllUpdated
+//}
+
+void resetState(Animal *animals, Animal **board, Animal **resqued, Vec2 *frontRowPos) {
+	//memset(animals, 0, sizeof(Animal)*BOARD_SIZE);
+	//setAnimals(animals);
+
+	for (int i = 0; i < BOARD_SIZE; i++) {
+		board[i] = &animals[i];
+	}
+
+	shuffleBoard(board, frontRowPos);
+	memset(resqued, 0, sizeof(animals)*BOARD_SIZE);
+}
+
+void processKeyDown(Animal *anim) {
+	anim->press = anim->height*0.05;
+	if (anim->height < MIN_JUMP_HEIGHT) {
+		anim->height = MIN_JUMP_HEIGHT;
+	}
+}
+
+void setTitleAnims(Animal **titleAnims, TitleState *tstate) {
+	for (int i = 0; i < 3; i++) {
+		tstate->destForOpening[i] = titleAnims[i]->dest;
+	}
+
+	titleAnims[0]->dest = (Vec2){WINDOW_WIDTH / 4 * 3, TITLE_LANDING_Y + TITLE_HEIGHT - ANIM_SIZE/3};
+	titleAnims[1]->dest = (Vec2){WINDOW_WIDTH / 4 * 1.5, TITLE_LANDING_Y + TITLE_HEIGHT - ANIM_SIZE/3};
+	titleAnims[2]->dest = (Vec2){WINDOW_WIDTH / 2, TITLE_LANDING_Y - TITLE_HEIGHT/4 + ANIM_SIZE/2};
 }
 
 int main() {
