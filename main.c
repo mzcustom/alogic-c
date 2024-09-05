@@ -3,12 +3,12 @@
 #include <assert.h>
 #include "raylib.h" 
 
-#define i64  int64_t
-#define i32  int32_t
-#define f64  double
-#define f32  float
-#define u8   uint8_t
-#define Vec2 Vector2
+typedef int64_t i64;
+typedef int32_t i32; 
+typedef double f64;  
+typedef float f32;  
+typedef uint8_t u8;   
+typedef Vector2 Vec2;
 
 #define SWAP(A, B)  do { typeof(A) temp = A; A = B; B = temp; } while(0)
 
